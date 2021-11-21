@@ -92,7 +92,8 @@ function Settings(namespace, version) {
 var examples = {
   "Drinking Water": {
     overpass:
-      "/*\nThis is an example Overpass query.\nTry it out by pressing the Run button above!\nYou can find more examples with the Load tool.\n*/\nnode\n  [amenity=drinking_water]\n  ({{bbox}});\nout;"
+      '<!-- OpenStreetMap: Getting entries and exitsts of the selected area -->\n<!-- Created on 12/13/18 -->\n<query type="way" into="hw">\n\t<has-kv k="highway"/>\n\t<has-kv k="highway" modv="not" regv="footway|cycleway|path|service|track"/>\n\t<bbox-query {{bbox}}/>\n</query>\n\n<foreach from="hw" into="w">\n\t<recurse from="w" type="way-node" into="ns"/>\n\t<recurse from="ns" type="node-way" into="w2"/>\n\t<query type="way" into="w2">\n\t\t<item set="w2"/>\n\t\t<has-kv k="highway"/>\n\t\t<has-kv k="highway" modv="not" regv="footway|cycleway|path|service|track"/>\n\t</query>\n\t<difference into="wd">\n\t\t<item set="w2"/>\n\t\t<item set="w"/>\n\t</difference>\n\t<recurse from="wd" type="way-node" into="n2"/>\n\t<recurse from="w"  type="way-node" into="n3"/>\n\t<query type="node">\n\t\t<item set="n2"/>\n\t\t<item set="n3"/>\n\t</query>\n\t<print/>\n</foreach>'
+    // "/*\nThis is an example Overpass query.\nTry it out by pressing the Run button above!\nYou can find more examples with the Load tool.\n*/\nnode\n  [amenity=drinking_water]\n  ({{bbox}});\nout;"
   },
   "Cycle Network": {
     overpass:

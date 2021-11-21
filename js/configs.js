@@ -18,8 +18,8 @@ export default {
     //"http://otile1.mqcdn.com/tiles/1.0.0/osm/{z}/{x}/{y}.jpg",
   ],
   defaultMapView: {
-    lat: 41.89,
-    lon: 12.492,
+    lat: 23.614328,
+    lon: 58.545284,
     zoom: 16
   },
   maxMapZoom: 20,
