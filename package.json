@@ -4,6 +4,9 @@
   "homepage": "http://overpass-turbo.eu/",
   "repository": "git+https://github.com/tyrasd/overpass-turbo.git",
   "license": "MIT",
+  "engines": {
+    "node": "14.x"
+  },
   "scripts": {
     "test": "npm run test:style && npm run test:karma",
     "test:style": "prettier --check .",
