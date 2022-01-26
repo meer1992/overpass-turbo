@@ -28,7 +28,9 @@ import Autorepair from "./autorepair";
 import {Base64, htmlentities, lzw_encode, lzw_decode} from "./misc";
 import sync from "./sync-with-osm";
 import shortcuts from "./shortcuts";
-
+import query from "./query";
+import {XMLParser} from "fast-xml-parser";
+import hull from "hull.js";
 // Handler to allow copying in various MIME formats
 // @see https://developer.mozilla.org/en-US/docs/Web/Events/copy
 // @see https://developer.mozilla.org/en-US/docs/Web/API/ClipboardEvent/clipboardData
@@ -57,7 +59,7 @@ var ide = new (function () {
   this.dataViewer = null;
   this.map = null;
   var ide = this;
-
+  this.marker_latln;
   // == helpers ==
 
   var make_combobox = function (input, options, deletables, deleteCallback) {
@@ -532,7 +534,20 @@ var ide = new (function () {
       settings.coords_zoom = ide.map.getZoom();
       settings.save(); // save settings
     });
-
+    // Marker
+    var marker;
+    L.Icon.Default.imagePath = "./node_modules/leaflet/dist/images";
+    ide.map.on("click", function (e) {
+      console.log("You clicked the map at " + e.latlng);
+      if (marker) {
+        ide.map.removeLayer(marker);
+      }
+      marker = new L.marker(e.latlng).addTo(ide.map);
+      //update marker
+      // console.log(typeof ide.marker_latln)
+      ide.marker_latlng = e.latlng;
+      console.log(e.latlng);
+    });
     // tabs
     $("#dataviewer > div#data")[0].style.zIndex = -1001;
     $(".tabs li").bind("click", function (e) {
@@ -657,6 +672,10 @@ var ide = new (function () {
         link.className += " t";
         link.setAttribute("data-t", "[title]map_controlls.toggle_wide_map");
         i18n.translate_ui(link);
+        // By default hide IDE
+        $("#dataviewer").toggleClass("fullscreen");
+        ide.map.invalidateSize();
+        $("#editor").toggleClass("hidden");
         L.DomEvent.addListener(
           link,
           "click",
@@ -1036,6 +1055,36 @@ var ide = new (function () {
     overpass.handlers["onRawDataPresent"] = function () {
       ide.dataViewer.setOption("mode", overpass.resultType);
       ide.dataViewer.setValue(overpass.resultText);
+      console.log("Data availble here");
+      console.log(overpass.resultText);
+      const options = {
+        ignoreAttributes: false,
+        attributeNamePrefix: ""
+      };
+      const parser = new XMLParser(options);
+      let osm_obj = parser.parse(overpass.resultText);
+      console.log("======");
+      console.log(osm_obj);
+      var coordinates_node = [];
+      // TODO: this need to be fixed
+      if (osm_obj.osm.node != undefined) {
+        for (var i = 0; i < osm_obj.osm.node.length; i++) {
+          // console.log(osm_obj.osm.node[i]);
+          coordinates_node.push({
+            lng: osm_obj.osm.node[i].lon,
+            lat: osm_obj.osm.node[i].lat
+          });
+          // console.log("data length " + osm_obj.osm.node.length);
+        }
+        console.log(coordinates_node);
+        const concavity = 80;
+        const format = [".lng", ".lat"];
+        console.log(hull);
+        const hullPts = hull(coordinates_node, concavity, format);
+        console.log("------");
+        console.log(hullPts);
+        L.polygon(hullPts, {weight: 2}).addTo(ide.map);
+      }
     };
     overpass.handlers["onGeoJsonReady"] = function () {
       // show layer
@@ -1207,7 +1256,13 @@ var ide = new (function () {
   /* this returns the current query in the editor.
    * shortcuts are expanded. */
   this.getQuery = function (callback) {
-    var query = ide.getRawQuery();
+    // var query = ide.getRawQuery();
+    var query =
+      '<!-- OpenStreetMap: Getting entries and exitsts of the selected area -->\n<!-- Created on 12/13/18 -->\n<query type="way" into="hw">\n\t<has-kv k="highway"/>\n\t<has-kv k="highway" modv="not" regv="footway|cycleway|path|service|track"/>\n\t<around lat="' +
+      ide.marker_latlng.lat +
+      '" lon="' +
+      ide.marker_latlng.lng +
+      '" radius="200.0"/>\n</query>\n\n<foreach from="hw" into="w">\n\t<recurse from="w" type="way-node" into="ns"/>\n\t<recurse from="ns" type="node-way" into="w2"/>\n\t<query type="way" into="w2">\n\t\t<item set="w2"/>\n\t\t<has-kv k="highway"/>\n\t\t<has-kv k="highway" modv="not" regv="footway|cycleway|path|service|track"/>\n\t</query>\n\t<difference into="wd">\n\t\t<item set="w2"/>\n\t\t<item set="w"/>\n\t</difference>\n\t<recurse from="wd" type="way-node" into="n2"/>\n\t<recurse from="w"  type="way-node" into="n3"/>\n\t<query type="node">\n\t\t<item set="n2"/>\n\t\t<item set="n3"/>\n\t</query>\n\t<print/>\n</foreach>';
     var queryLang = ide.getQueryLang();
     // parse query and process shortcuts
     // special handling for global bbox in xml queries (which uses an OverpassQL-like notation instead of n/s/e/w parameters):
@@ -1247,9 +1302,10 @@ var ide = new (function () {
     ide.codeEditor.setValue(query);
   };
   this.getQueryLang = function () {
-    if ($.trim(ide.getRawQuery().replace(/{{.*?}}/g, "")).match(/^</))
-      return "xml";
-    else return "OverpassQL";
+    return "xml";
+    // if ($.trim(ide.getRawQuery().replace(/{{.*?}}/g, "")).match(/^</))
+    //   return "xml";
+    // else return "OverpassQL";
   };
   /* this is for repairig obvious mistakes in the query, such as missing recurse statements */
   this.repairQuery = function (repair) {
@@ -2740,6 +2796,22 @@ var ide = new (function () {
 
     ide.waiter.addInfo("building query");
     // run the query via the overpass object
+    // var server =
+    // ide.data_source &&
+    // ide.data_source.mode == "overpass" &&
+    // ide.data_source.options.server
+    //   ? ide.data_source.options.server
+    //   : settings.server;
+    // var query = '<!-- OpenStreetMap: Getting entries and exitsts of the selected area -->\n<!-- Created on 12/13/18 -->\n<query type="way" into="hw">\n\t<has-kv k="highway"/>\n\t<has-kv k="highway" modv="not" regv="footway|cycleway|path|service|track"/>\n\t<bbox-query {{bbox}}/>\n</query>\n\n<foreach from="hw" into="w">\n\t<recurse from="w" type="way-node" into="ns"/>\n\t<recurse from="ns" type="node-way" into="w2"/>\n\t<query type="way" into="w2">\n\t\t<item set="w2"/>\n\t\t<has-kv k="highway"/>\n\t\t<has-kv k="highway" modv="not" regv="footway|cycleway|path|service|track"/>\n\t</query>\n\t<difference into="wd">\n\t\t<item set="w2"/>\n\t\t<item set="w"/>\n\t</difference>\n\t<recurse from="wd" type="way-node" into="n2"/>\n\t<recurse from="w"  type="way-node" into="n3"/>\n\t<query type="node">\n\t\t<item set="n2"/>\n\t\t<item set="n3"/>\n\t</query>\n\t<print/>\n</foreach>';
+    // overpass.run_query(
+    //   query,
+    //   "xml",
+    //   undefined,
+    //   undefined,
+    //   server,
+    //   ide.mapcss
+    // );
+    // no need to get query
     ide.getQuery(function (query) {
       var query_lang = ide.getQueryLang();
       var server =
@@ -2748,6 +2820,8 @@ var ide = new (function () {
         ide.data_source.options.server
           ? ide.data_source.options.server
           : settings.server;
+      console.log("query");
+      console.log(query);
       overpass.run_query(
         query,
         query_lang,
